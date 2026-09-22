@@ -1,0 +1,9 @@
+{
+  "appId": "com.geosnap.pro",
+  "appName": "GeoSnap Pro",
+  "webDir": "www",
+  "bundledWebRuntime": false,
+  "android": {
+    "allowMixedContent": true
+  }
+}

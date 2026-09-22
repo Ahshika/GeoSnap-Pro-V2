@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" id="html-root">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>GeoSnap Pro</title>
+  <meta name="theme-color" content="#0284c7">
+
+  <!-- Fatal-error boundary: registered before any other script runs, and styled inline
+       (not with Tailwind) so it still renders correctly even if a vendor script itself
+       is what failed to load. Prevents a silent white screen that looks like a "broken app". -->
+  <script>
+    (function () {
+      var shown = false;
+      function showFatalOverlay(detail) {
+        if (shown) return;
+        shown = true;
+        try { console.error('Fatal error captured by boundary:', detail); } catch (e) {}
+        var el = document.getElementById('fatal-error-overlay');
+        if (!el) return;
+        el.style.display = 'flex';
+      }
+      window.addEventListener('error', function (e) { showFatalOverlay(e.error || e.message); });
+      window.addEventListener('unhandledrejection', function (e) { showFatalOverlay(e.reason); });
+      window.__reloadApp = function () { window.location.reload(); };
+    })();
+  </script>
+
+  <script src="vendor/tailwind.js"></script>
+  <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="vendor/qrcode.min.js"></script>
+  <script src="vendor/piexif.min.js"></script>
+  <script src="vendor/jspdf.umd.min.js"></script>
+
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-slate-950 text-white font-sans overflow-hidden select-none h-screen w-screen flex flex-col">
+
+  <!-- Fatal-error recovery overlay. Deliberately inline-styled, no Tailwind/FontAwesome dependency. -->
+  <div id="fatal-error-overlay" style="display:none;position:fixed;inset:0;z-index:99999;background:#0f172a;color:#fff;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;font-family:Arial,sans-serif;">
+    <div style="font-size:40px;margin-bottom:12px;">⚠️</div>
+    <div style="font-size:16px;font-weight:bold;margin-bottom:6px;">حدث خطأ غير متوقع — Something went wrong</div>
+    <div style="font-size:12px;color:#94a3b8;margin-bottom:20px;max-width:320px;">جرّب إعادة التحميل. البيانات والصور المحفوظة لن تتأثر.<br>Try reloading — your saved photos are not affected.</div>
+    <button onclick="window.__reloadApp()" style="background:#0284c7;color:#fff;font-weight:bold;padding:12px 28px;border:none;border-radius:12px;font-size:14px;">إعادة التحميل / Reload</button>
+  </div>
+
+  <!-- Header Control Bar -->
+  <header class="absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-4 py-3 bg-gradient-to-b from-black/80 via-black/40 to-transparent backdrop-blur-xs">
+    <div class="flex items-center gap-2">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-sky-500/20">
+        <i class="fa-solid fa-location-dot text-white text-lg"></i>
+      </div>
+      <div>
+        <h1 class="text-base font-bold tracking-wide bg-gradient-to-r from-white via-slate-100 to-sky-300 bg-clip-text text-transparent">GeoSnap Pro</h1>
+        <p id="app-subtitle" class="text-[10px] text-sky-400 font-medium tracking-tight" data-i18n="app_subtitle">كاميرا GPS للمعاينة والمشاريع</p>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2.5">
+      <button id="btn-flash" class="w-9 h-9 rounded-full bg-slate-800/70 border border-slate-700/60 flex items-center justify-center text-slate-300 hover:text-amber-400 active:scale-95 transition">
+        <i class="fa-solid fa-bolt text-sm"></i>
+      </button>
+      <button id="btn-flip" class="w-9 h-9 rounded-full bg-slate-800/70 border border-slate-700/60 flex items-center justify-center text-slate-300 hover:text-sky-400 active:scale-95 transition">
+        <i class="fa-solid fa-camera-rotate text-sm"></i>
+      </button>
+      <button id="btn-grid" class="w-9 h-9 rounded-full bg-slate-800/70 border border-slate-700/60 flex items-center justify-center text-slate-300 hover:text-emerald-400 active:scale-95 transition">
+        <i class="fa-solid fa-border-all text-sm"></i>
+      </button>
+      <button id="btn-more" class="w-9 h-9 rounded-full bg-slate-800/70 border border-slate-700/60 flex items-center justify-center text-slate-300 hover:text-indigo-400 active:scale-95 transition">
+        <i class="fa-solid fa-gear text-sm"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Permission Banner -->
+  <div id="permission-banner" class="hidden absolute top-16 left-3 right-3 z-40 bg-rose-950/95 border border-rose-500/60 rounded-2xl p-3 text-xs flex items-start gap-2 shadow-xl">
+    <i class="fa-solid fa-triangle-exclamation text-rose-400 mt-0.5"></i>
+    <div class="flex-1">
+      <p id="permission-banner-text" data-i18n="permission_needed">التطبيق يحتاج أذونات الكاميرا والموقع للعمل بشكل صحيح.</p>
+      <button id="btn-grant-permissions" class="mt-2 bg-rose-600 hover:bg-rose-500 text-white font-bold px-3 py-1.5 rounded-lg text-[11px]" data-i18n="grant_permissions">منح الأذونات</button>
+    </div>
+  </div>
+
+  <!-- Main Camera Viewport Area -->
+  <main id="camera-viewport" class="relative flex-1 bg-black overflow-hidden flex items-center justify-center touch-none">
+    <!-- Hidden until a frame actually decodes, so a stuck/broken stream never shows the
+         WebView's default "no source" media glyph - the status overlay below covers that gap. -->
+    <video id="video-stream" class="w-full h-full object-cover hidden" autoplay playsinline muted></video>
+
+    <!-- Pinch-to-zoom level indicator (digital crop zoom, works identically on every device -
+         camera hardware "optical zoom" support via getUserMedia is too inconsistent to rely on). -->
+    <div id="zoom-level-badge" class="hidden absolute top-16 left-1/2 -translate-x-1/2 z-20 bg-black/70 text-white text-xs font-bold font-mono px-3 py-1 rounded-full pointer-events-none">1.0x</div>
+
+    <!-- Camera status overlay: loading spinner while (re)connecting, tap-to-retry on failure.
+         Covers the exact freeze/broken-icon symptom instead of leaving a dead black screen. -->
+    <div id="camera-status-overlay" class="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-black text-slate-300">
+      <i id="camera-status-spinner" class="fa-solid fa-circle-notch fa-spin text-sky-400 text-3xl"></i>
+      <div id="camera-status-error" class="hidden flex-col items-center gap-3">
+        <i class="fa-solid fa-camera-slash text-rose-400 text-3xl"></i>
+        <p class="text-xs text-slate-400" data-i18n="camera_error">تعذر الوصول للكاميرا: يرجى السماح بإذن استخدام الكاميرا.</p>
+        <div class="flex items-center gap-2">
+          <button id="btn-camera-retry" class="bg-sky-600 text-white font-bold px-5 py-2 rounded-xl text-xs" data-i18n="retry_camera">إعادة المحاولة</button>
+          <button id="btn-camera-open-settings" class="bg-slate-700 text-white font-bold px-5 py-2 rounded-xl text-xs" data-i18n="open_settings">إعدادات الأذونات</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="camera-grid" class="absolute inset-0 pointer-events-none hidden z-10"></div>
+
+    <!-- Manual location indicator -->
+    <div id="manual-loc-badge" class="hidden absolute top-3 left-3 z-20 bg-amber-600/90 text-white text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shadow-lg">
+      <i class="fa-solid fa-thumbtack"></i> <span data-i18n="manual_location">موقع يدوي</span>
+    </div>
+
+    <!-- Live Watermark Overlay Box -->
+    <div id="watermark-overlay" class="absolute bottom-4 left-3 right-3 z-20 transition-all duration-300">
+
+      <!-- TEMPLATE 1: CLASSIC GPS MAP STAMP -->
+      <div id="template-classic" class="watermark-card bg-slate-900/85 backdrop-blur-md border border-slate-700/80 rounded-2xl p-3 shadow-2xl flex flex-col gap-2">
+        <div class="flex items-center gap-3">
+          <div id="mini-map-tap-classic" class="relative w-24 h-24 rounded-xl overflow-hidden border border-slate-600/60 shrink-0 shadow-inner cursor-pointer">
+            <div id="mini-map-classic" class="w-full h-full"></div>
+            <div class="absolute top-1 left-1 bg-black/60 backdrop-blur-xs px-1.5 py-0.5 rounded text-[9px] font-bold text-sky-400">
+              <i class="fa-solid fa-compass"></i> <span id="val-compass">N 0°</span>
+            </div>
+          </div>
+          <div class="flex-1 min-w-0 flex flex-col justify-between text-xs space-y-1">
+            <div class="flex items-start gap-1.5 text-white font-semibold leading-tight">
+              <i class="fa-solid fa-location-dot text-rose-500 mt-0.5 shrink-0"></i>
+              <span id="val-address" class="line-clamp-2 text-[11px]" data-i18n="locating">جاري تحديد الموقع التفصيلي...</span>
+            </div>
+            <div class="grid grid-cols-2 gap-x-2 text-[10px] text-slate-300 font-mono">
+              <div><span class="text-sky-400 font-sans" data-i18n="lat_label">خط العرض:</span> <span id="val-lat">0.000000°</span></div>
+              <div><span class="text-sky-400 font-sans" data-i18n="lng_label">خط الطول:</span> <span id="val-lng">0.000000°</span></div>
+              <div><span class="text-sky-400 font-sans" data-i18n="alt_label">الارتفاع:</span> <span id="val-alt">-- م</span></div>
+              <div><span class="text-sky-400 font-sans" data-i18n="acc_label">الدقة:</span> <span id="val-acc">±0 م</span></div>
+            </div>
+            <div class="flex items-center justify-between text-[10px] text-slate-400 border-t border-slate-800 pt-1 mt-1">
+              <div class="flex items-center gap-1 text-slate-200 font-mono">
+                <i class="fa-regular fa-clock text-amber-400"></i>
+                <span id="val-datetime">2026-09-07 00:00:00</span>
+              </div>
+              <div class="flex items-center gap-1 text-emerald-400 font-semibold">
+                <i class="fa-solid fa-cloud-sun text-amber-400"></i>
+                <span id="val-weather">--°C</span>
+              </div>
+            </div>
+          </div>
+          <div class="w-14 h-14 bg-white p-1 rounded-xl shrink-0 flex items-center justify-center shadow-md">
+            <div id="qrcode-classic" class="w-full h-full flex items-center justify-center"></div>
+          </div>
+        </div>
+        <div id="classic-custom-row" class="hidden border-t border-slate-800/80 pt-1.5 flex items-center justify-between text-[10px]">
+          <div class="flex items-center gap-2">
+            <img id="val-logo-img" src="" class="h-5 object-contain hidden" alt="Logo">
+            <span id="val-project-name" class="font-bold text-sky-400"></span>
+          </div>
+          <div id="val-inspector" class="text-slate-300"></div>
+        </div>
+      </div>
+
+      <!-- TEMPLATE 2: ENGINEERING / SITE INSPECTION STAMP -->
+      <div id="template-engineering" class="watermark-card hidden bg-slate-950/90 backdrop-blur-lg border-2 border-indigo-500/80 rounded-2xl p-3 shadow-2xl flex flex-col gap-2">
+        <div class="flex items-center justify-between border-b border-indigo-500/30 pb-1.5">
+          <div class="flex items-center gap-2">
+            <div class="w-6 h-6 rounded bg-indigo-600 flex items-center justify-center text-white text-xs font-bold">
+              <i class="fa-solid fa-helmet-safety"></i>
+            </div>
+            <div>
+              <span id="eng-project-title" class="font-bold text-sm text-indigo-300 block leading-none" data-i18n="eng_default_title">معاينة مشروع هندسي</span>
+              <span id="eng-site-id" class="text-[9px] text-slate-400 font-mono">SITE-ID: #2026-ENG</span>
+            </div>
+          </div>
+          <div class="bg-indigo-950/90 border border-indigo-500/40 px-2 py-0.5 rounded text-[10px] text-indigo-200 font-mono">
+            <span id="val-datetime-eng">00:00</span>
+          </div>
+        </div>
+        <div class="grid grid-cols-3 gap-2 text-[10px]">
+          <div class="col-span-2 space-y-1">
+            <div class="text-slate-200 leading-tight">
+              <span class="text-indigo-400 font-bold" data-i18n="location_label">الموقع:</span> <span id="val-address-eng" data-i18n="loading_ellipsis">جاري التحميل...</span>
+            </div>
+            <div class="font-mono text-slate-300">
+              <span class="text-indigo-400" data-i18n="coords_label">الإحداثيات:</span> <span id="val-coords-eng">0.000, 0.000</span>
+            </div>
+            <div class="text-slate-300">
+              <span class="text-indigo-400 font-bold" data-i18n="inspector_label">المعاين/المهندس:</span> <span id="eng-inspector-name">--</span>
+            </div>
+            <div class="text-amber-300 italic text-[9px] line-clamp-1">
+              <span class="font-bold" data-i18n="notes_label">ملاحظات:</span> <span id="eng-notes-text">--</span>
+            </div>
+          </div>
+          <div class="flex flex-col items-center justify-center gap-1 border-r border-slate-800 pr-2">
+            <div class="w-12 h-12 bg-white p-1 rounded-lg">
+              <div id="qrcode-eng" class="w-full h-full"></div>
+            </div>
+            <span class="text-[8px] text-slate-400" data-i18n="scan_map">امسح الخريطة</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- TEMPLATE 3: SLEEK MINIMALIST BAR -->
+      <div id="template-minimal" class="watermark-card hidden bg-black/75 backdrop-blur-md border-t border-sky-500/40 px-3 py-2 shadow-2xl flex items-center justify-between text-[11px] rounded-xl">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-location-crosshairs text-sky-400 text-sm"></i>
+          <div>
+            <div id="val-coords-minimal" class="font-mono font-bold text-white tracking-wider">0.000000°, 0.000000°</div>
+            <div id="val-address-minimal" class="text-[9px] text-slate-300 truncate max-w-[200px]">--</div>
+          </div>
+        </div>
+        <div class="text-left font-mono text-[10px] text-slate-300">
+          <div id="val-date-minimal" class="text-sky-300">2026-09-07</div>
+          <div id="val-time-minimal">00:00:00</div>
+        </div>
+      </div>
+
+      <!-- TEMPLATE 4: OFFICIAL BADGE SEAL -->
+      <div id="template-badge" class="watermark-card hidden flex justify-end">
+        <div class="bg-gradient-to-br from-slate-900/90 to-amber-950/90 backdrop-blur-md border-2 border-amber-500/70 rounded-2xl p-3 shadow-2xl max-w-[220px] text-center flex flex-col items-center gap-1">
+          <div class="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-400/60 flex items-center justify-center text-amber-400 text-sm mb-1">
+            <i class="fa-solid fa-award"></i>
+          </div>
+          <div class="text-xs font-bold text-amber-300" data-i18n="gps_seal">ختم توثيق الـ GPS</div>
+          <div id="val-address-badge" class="text-[9px] text-slate-200 line-clamp-2">--</div>
+          <div id="val-coords-badge" class="text-[9px] font-mono text-amber-200">0.000000, 0.000000</div>
+          <div id="val-date-badge" class="text-[9px] text-slate-400 border-t border-amber-500/30 pt-1 w-full">2026-09-07 00:00</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Bottom Shutter & Controls Toolbar -->
+  <footer class="relative z-30 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800/80 px-6 py-4 flex items-center justify-between">
+    <button id="btn-gallery" class="relative w-12 h-12 rounded-2xl bg-slate-900 border border-slate-700/80 overflow-hidden flex items-center justify-center hover:border-sky-500 transition active:scale-95">
+      <img id="gallery-thumb-img" src="" class="w-full h-full object-cover hidden" alt="Gallery">
+      <i id="gallery-thumb-icon" class="fa-solid fa-images text-slate-400 text-lg"></i>
+      <span id="gallery-count" class="absolute -top-1 -right-1 bg-sky-500 text-white text-[9px] font-bold px-1.5 py-0.2 rounded-full hidden">0</span>
+    </button>
+
+    <div class="relative flex items-center justify-center">
+      <button id="btn-capture" class="w-20 h-20 rounded-full bg-gradient-to-r from-sky-500 via-indigo-500 to-sky-400 p-1.5 shadow-xl shadow-sky-500/30 hover:scale-105 active:scale-95 transition-all">
+        <div class="w-full h-full rounded-full border-4 border-white/90 bg-white/20 backdrop-blur-xs flex items-center justify-center">
+          <div class="w-12 h-12 rounded-full bg-white shadow-inner"></div>
+        </div>
+      </button>
+    </div>
+
+    <button id="btn-templates" class="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-700/80 flex flex-col items-center justify-center text-slate-300 hover:text-sky-400 hover:border-sky-500 transition active:scale-95">
+      <i class="fa-solid fa-layer-group text-base mb-0.5"></i>
+      <span class="text-[9px] font-medium" data-i18n="templates_short">القوالب</span>
+    </button>
+  </footer>
+
+  <!-- MODAL: TEMPLATE SELECTOR -->
+  <div id="modal-templates" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-5 flex flex-col gap-4 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h2 class="text-base font-bold text-white flex items-center gap-2"><i class="fa-solid fa-palette text-sky-400"></i> <span data-i18n="choose_template">اختر قالب الختم المائي</span></h2>
+        <button class="modal-close-btn w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center" data-target="modal-templates"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <button data-template="classic" class="template-select-btn p-3 rounded-2xl border-2 border-sky-500 bg-sky-500/10 text-right flex flex-col gap-1 transition">
+          <div class="flex items-center justify-between text-sky-400 font-bold text-xs"><span data-i18n="tpl_classic_name">قالب GPS كلاسيكي</span><i class="fa-solid fa-circle-check"></i></div>
+          <p class="text-[10px] text-slate-400" data-i18n="tpl_classic_desc">خريطة + إحداثيات + عنوان تفصيلي + طقس + رمز QR</p>
+        </button>
+        <button data-template="engineering" class="template-select-btn p-3 rounded-2xl border-2 border-slate-700 bg-slate-800/40 text-right flex flex-col gap-1 transition">
+          <div class="flex items-center justify-between text-indigo-400 font-bold text-xs"><span data-i18n="tpl_eng_name">قالب هندسي للمعاينات</span><i class="fa-solid fa-helmet-safety"></i></div>
+          <p class="text-[10px] text-slate-400" data-i18n="tpl_eng_desc">اسم المشروع، المعاين، الإحداثيات والملاحظات الفنية</p>
+        </button>
+        <button data-template="minimal" class="template-select-btn p-3 rounded-2xl border-2 border-slate-700 bg-slate-800/40 text-right flex flex-col gap-1 transition">
+          <div class="flex items-center justify-between text-emerald-400 font-bold text-xs"><span data-i18n="tpl_minimal_name">قالب شريط أنيق</span><i class="fa-solid fa-minus"></i></div>
+          <p class="text-[10px] text-slate-400" data-i18n="tpl_minimal_desc">شريط سفلي بسيط للإحداثيات والتاريخ دون ازدحام</p>
+        </button>
+        <button data-template="badge" class="template-select-btn p-3 rounded-2xl border-2 border-slate-700 bg-slate-800/40 text-right flex flex-col gap-1 transition">
+          <div class="flex items-center justify-between text-amber-400 font-bold text-xs"><span data-i18n="tpl_badge_name">ختم رسمي موثق</span><i class="fa-solid fa-award"></i></div>
+          <p class="text-[10px] text-slate-400" data-i18n="tpl_badge_desc">شعار وختم دائري فاخر في زاوية الصورة</p>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: PROJECT & NOTES -->
+  <div id="modal-project" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-5 flex flex-col gap-4 shadow-2xl max-h-[85vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h2 class="text-base font-bold text-white flex items-center gap-2"><i class="fa-solid fa-pen-ruler text-indigo-400"></i> <span data-i18n="project_data_title">بيانات المشروع والختم المخصص</span></h2>
+        <button class="modal-close-btn w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center" data-target="modal-project"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block text-slate-300 font-semibold mb-1" data-i18n="project_name_label">اسم المشروع / المعاينة:</label>
+          <input type="text" id="input-project-name" data-i18n-placeholder="project_name_ph" placeholder="مثال: مشروع البرج السكني - الموقع 4" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-indigo-500 outline-none">
+        </div>
+        <div>
+          <label class="block text-slate-300 font-semibold mb-1" data-i18n="inspector_name_label">اسم الفاحص / المهندس:</label>
+          <input type="text" id="input-inspector-name" data-i18n-placeholder="inspector_name_ph" placeholder="مثال: م. أحمد محمد" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-indigo-500 outline-none">
+        </div>
+        <div>
+          <label class="block text-slate-300 font-semibold mb-1" data-i18n="site_id_label">معرف الموقع / Site ID:</label>
+          <input type="text" id="input-site-id" data-i18n-placeholder="site_id_ph" placeholder="مثال: SITE-9021" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-indigo-500 outline-none">
+        </div>
+        <div>
+          <label class="block text-slate-300 font-semibold mb-1" data-i18n="notes_field_label">ملاحظات حقلية إضافية:</label>
+          <textarea id="input-notes" rows="2" data-i18n-placeholder="notes_ph" placeholder="أدخل أي ملاحظات فنية أو تفاصيل المعاينة..." class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-indigo-500 outline-none resize-none"></textarea>
+        </div>
+        <div>
+          <label class="block text-slate-300 font-semibold mb-1" data-i18n="logo_upload_label">رفع شعار الشركة / التوقيع الشخصي:</label>
+          <input type="file" id="input-logo-file" accept="image/*" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-slate-300 text-xs">
+        </div>
+        <button id="save-project-notes" class="w-full bg-gradient-to-r from-indigo-600 to-sky-600 text-white font-bold py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 hover:opacity-95 active:scale-95 transition mt-2" data-i18n="save_apply">حفظ وتطبيق البيانات</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: PHOTO RESULT -->
+  <div id="modal-photo-result" class="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-xl flex flex-col p-4 hidden">
+    <div class="flex items-center justify-between pb-3">
+      <div class="flex items-center gap-2">
+        <i class="fa-solid fa-circle-check text-emerald-400 text-lg"></i>
+        <h2 class="text-sm font-bold text-white" data-i18n="photo_preview_title">معاينة الصورة الملتقطة مع الختم</h2>
+      </div>
+      <button class="modal-close-btn w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center" data-target="modal-photo-result"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="flex-1 min-h-0 relative flex items-center justify-center my-2 bg-black rounded-2xl overflow-hidden border border-slate-800">
+      <img id="result-photo-img" class="w-full h-full object-contain touch-none" src="" alt="Captured Photo">
+      <div id="result-saving-indicator" class="absolute inset-0 bg-black/60 flex items-center justify-center hidden">
+        <i class="fa-solid fa-circle-notch fa-spin text-sky-400 text-3xl"></i>
+      </div>
+    </div>
+    <div id="result-save-status" class="text-center text-[11px] text-emerald-400 pb-2 hidden"><i class="fa-solid fa-check-circle"></i> <span data-i18n="saved_to_gallery">تم الحفظ في معرض الهاتف مع بيانات GPS الحقيقية (EXIF)</span></div>
+    <div class="grid grid-cols-3 gap-3 pt-2">
+      <button id="btn-retake" class="bg-slate-800 border border-slate-700 text-slate-300 font-bold py-3 rounded-2xl flex items-center justify-center gap-2 hover:bg-slate-700 active:scale-95 transition">
+        <i class="fa-solid fa-rotate-right"></i> <span data-i18n="retake">إعادة التقاط</span>
+      </button>
+      <button id="btn-share" class="bg-sky-600 text-white font-bold py-3 rounded-2xl flex items-center justify-center gap-2 hover:bg-sky-500 shadow-lg shadow-sky-600/30 active:scale-95 transition">
+        <i class="fa-solid fa-share-nodes"></i> <span data-i18n="share">مشاركة</span>
+      </button>
+      <button id="btn-done" class="bg-emerald-600 text-white font-bold py-3 rounded-2xl flex items-center justify-center gap-2 hover:bg-emerald-500 shadow-lg shadow-emerald-600/30 active:scale-95 transition">
+        <i class="fa-solid fa-check"></i> <span data-i18n="done">تم</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- MODAL: GALLERY -->
+  <div id="modal-gallery" class="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-xl flex flex-col p-4 hidden">
+    <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+      <div class="flex items-center gap-2">
+        <i class="fa-solid fa-images text-sky-400 text-lg"></i>
+        <h2 class="text-base font-bold text-white" data-i18n="gallery_title">معرض الصور الملتقطة</h2>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="btn-gallery-report" class="w-9 h-9 rounded-full bg-indigo-600/80 border border-indigo-500/60 text-white flex items-center justify-center" title="PDF Report"><i class="fa-solid fa-file-pdf text-sm"></i></button>
+        <button class="modal-close-btn w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center" data-target="modal-gallery"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+    </div>
+    <div id="gallery-empty-hint" class="hidden flex-1 flex flex-col items-center justify-center text-slate-500 gap-2">
+      <i class="fa-solid fa-image text-4xl"></i>
+      <p class="text-xs" data-i18n="gallery_empty">لا توجد صور محفوظة بعد</p>
+    </div>
+    <div id="gallery-grid-container" class="flex-1 overflow-y-auto my-4 grid grid-cols-2 sm:grid-cols-3 gap-3"></div>
+  </div>
+
+  <!-- MODAL: FULL-SCREEN PHOTO VIEWER (in-app, no external Files/Gallery app needed) -->
+  <div id="modal-photo-viewer" class="fixed inset-0 z-[55] bg-black flex flex-col p-3 hidden">
+    <div class="flex items-center justify-between pb-2">
+      <span id="viewer-date-label" class="text-[11px] text-slate-400 font-mono"></span>
+      <button class="modal-close-btn w-9 h-9 rounded-full bg-slate-800/80 text-slate-300 hover:text-white flex items-center justify-center" data-target="modal-photo-viewer"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="flex-1 min-h-0 relative flex items-center justify-center bg-black rounded-2xl overflow-hidden">
+      <img id="viewer-photo-img" class="w-full h-full object-contain touch-none hidden" src="" alt="Photo">
+      <i id="viewer-loading-spinner" class="fa-solid fa-circle-notch fa-spin text-sky-400 text-3xl"></i>
+    </div>
+    <div class="grid grid-cols-2 gap-3 pt-3">
+      <button id="btn-viewer-delete" class="bg-rose-600/90 text-white font-bold py-3 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition">
+        <i class="fa-solid fa-trash"></i> <span data-i18n="delete_action">حذف</span>
+      </button>
+      <button id="btn-viewer-share" class="bg-sky-600 text-white font-bold py-3 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition">
+        <i class="fa-solid fa-share-nodes"></i> <span data-i18n="share">مشاركة</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- MODAL: MANUAL LOCATION FIX -->
+  <div id="modal-location-fix" class="fixed inset-0 z-50 bg-black/90 flex flex-col p-4 hidden">
+    <div class="flex items-center justify-between pb-3">
+      <h2 class="text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-map-pin text-amber-400"></i> <span data-i18n="fix_location_title">تصحيح الموقع يدويًا</span></h2>
+      <button class="modal-close-btn w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center" data-target="modal-location-fix"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <p class="text-[11px] text-slate-400 pb-2" data-i18n="fix_location_hint">اسحب الدبوس لتحديد موقعك الفعلي بدقة إذا كانت إشارة GPS غير دقيقة.</p>
+    <div id="big-map-container" class="flex-1 rounded-2xl overflow-hidden border border-slate-800"></div>
+    <div class="grid grid-cols-2 gap-3 pt-3">
+      <button id="btn-use-gps" class="bg-slate-800 border border-slate-700 text-slate-300 font-bold py-3 rounded-2xl flex items-center justify-center gap-2"><i class="fa-solid fa-satellite-dish"></i> <span data-i18n="use_live_gps">استخدام GPS المباشر</span></button>
+      <button id="btn-confirm-manual-loc" class="bg-amber-600 text-white font-bold py-3 rounded-2xl flex items-center justify-center gap-2"><i class="fa-solid fa-check"></i> <span data-i18n="confirm_location">تأكيد هذا الموقع</span></button>
+    </div>
+  </div>
+
+  <!-- MODAL: SETTINGS / MORE OPTIONS -->
+  <div id="modal-more" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-5 flex flex-col gap-3 shadow-2xl max-h-[85vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h2 class="text-base font-bold text-white flex items-center gap-2"><i class="fa-solid fa-gear text-slate-400"></i> <span data-i18n="settings_title">الإعدادات</span></h2>
+        <button class="modal-close-btn w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center" data-target="modal-more"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <div>
+        <label class="block text-slate-400 font-semibold mb-2 text-[11px]" data-i18n="language_section">لغة التطبيق</label>
+        <div class="grid grid-cols-2 gap-2">
+          <button id="lang-btn-ar" data-lang="ar" class="lang-select-btn flex items-center justify-center gap-2 p-3 rounded-2xl border-2 font-bold text-sm transition">
+            <span data-i18n="lang_ar_name">العربية</span>
+          </button>
+          <button id="lang-btn-en" data-lang="en" class="lang-select-btn flex items-center justify-center gap-2 p-3 rounded-2xl border-2 font-bold text-sm transition">
+            <span data-i18n="lang_en_name">English</span>
+          </button>
+        </div>
+      </div>
+
+      <button id="menu-project" class="flex items-center gap-3 bg-slate-800/60 hover:bg-slate-800 p-3 rounded-2xl text-right mt-1"><i class="fa-solid fa-pen-ruler text-indigo-400 w-5"></i> <span data-i18n="menu_project">بيانات المشروع والختم</span></button>
+      <button id="menu-location-fix" class="flex items-center gap-3 bg-slate-800/60 hover:bg-slate-800 p-3 rounded-2xl text-right"><i class="fa-solid fa-map-pin text-amber-400 w-5"></i> <span data-i18n="menu_location_fix">تصحيح الموقع يدويًا</span></button>
+      <button id="menu-report" class="flex items-center gap-3 bg-slate-800/60 hover:bg-slate-800 p-3 rounded-2xl text-right"><i class="fa-solid fa-file-pdf text-rose-400 w-5"></i> <span data-i18n="menu_report">إنشاء تقرير PDF من المعرض</span></button>
+      <button id="menu-permissions" class="flex items-center gap-3 bg-slate-800/60 hover:bg-slate-800 p-3 rounded-2xl text-right"><i class="fa-solid fa-shield-halved text-sky-400 w-5"></i> <span data-i18n="menu_permissions">حالة الأذونات</span></button>
+    </div>
+  </div>
+
+  <canvas id="hidden-canvas" class="hidden"></canvas>
+  <div id="toast-container" class="fixed bottom-24 left-0 right-0 z-[60] flex flex-col items-center gap-2 pointer-events-none"></div>
+
+  <script src="i18n.js"></script>
+  <script src="native-bridge.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
