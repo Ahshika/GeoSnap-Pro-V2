@@ -11,9 +11,9 @@
 ![Leaflet](https://img.shields.io/badge/maps-Leaflet-199900?logo=leaflet)
 ![Version](https://img.shields.io/badge/version-2.0-blue)
 
-<img src="docs/images/camera.png" width="300" alt="Camera with the classic GPS stamp"> &nbsp;
-<img src="docs/images/engineering.png" width="300" alt="Engineering inspection stamp"> &nbsp;
-<img src="docs/images/seal.png" width="300" alt="Official seal stamp">
+<img src="docs/images/camera.png" width="250" alt="Camera with the classic GPS stamp"> &nbsp;
+<img src="docs/images/engineering.png" width="250" alt="Engineering inspection stamp"> &nbsp;
+<img src="docs/images/seal.png" width="250" alt="Official seal stamp">
 
 </div>
 
