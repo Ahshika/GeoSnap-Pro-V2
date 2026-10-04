@@ -1,4 +1,21 @@
+<div align="center">
+
 # GeoSnap Pro
+
+**GPS camera for site inspections — every photo stamped live and saved with real EXIF geotags**
+
+كاميرا GPS للمعاينات الميدانية: كل صورة بتتختم بالموقع والوقت وبتتحفظ ببيانات GPS حقيقية
+
+![Android](https://img.shields.io/badge/Android-Capacitor-3DDC84?logo=android&logoColor=white)
+![JavaScript](https://img.shields.io/badge/JavaScript-vanilla-F7DF1E?logo=javascript&logoColor=black)
+![Leaflet](https://img.shields.io/badge/maps-Leaflet-199900?logo=leaflet)
+![Version](https://img.shields.io/badge/version-2.0-blue)
+
+<img src="docs/images/camera.png" width="300" alt="Camera with the classic GPS stamp"> &nbsp;
+<img src="docs/images/engineering.png" width="300" alt="Engineering inspection stamp"> &nbsp;
+<img src="docs/images/seal.png" width="300" alt="Official seal stamp">
+
+</div>
 
 GPS camera app for field inspections and project documentation, built with Capacitor for Android. Every photo is watermarked live and saved with real EXIF GPS data — with an Arabic-first, bilingual (AR/EN) UI.
 
@@ -16,6 +33,14 @@ GPS camera app for field inspections and project documentation, built with Capac
 - **PDF inspection reports** generated from the gallery (via `jsPDF`).
 - **Bilingual UI** (Arabic RTL / English) with a language switcher, and a fatal-error recovery overlay so a failed vendor script never leaves a blank screen.
 - Flash, camera flip, framing grid, and pinch-to-zoom (digital crop zoom).
+
+## Screenshots
+
+| Classic GPS stamp | Choosing a template | Engineering inspection | Official seal |
+|---|---|---|---|
+| ![Classic](docs/images/camera.png) | ![Templates](docs/images/templates.png) | ![Engineering](docs/images/engineering.png) | ![Seal](docs/images/seal.png) |
+
+<sub>Captured from the app's web build with a demo GPS position in Alexandria. The camera view is a drawn placeholder scene, not a real photo.</sub>
 
 ## Tech Stack
 
