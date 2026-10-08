@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/images/icon-512.png" width="128" alt="GeoSnap Pro icon">
+
 # GeoSnap Pro
 
 **GPS camera for site inspections — every photo stamped live and saved with real EXIF geotags**
